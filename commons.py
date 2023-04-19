@@ -481,7 +481,7 @@ def query_urlscan(args):
 def read_config(args):
     """ """
     global config
-    config_file = pathlib.Path(config.yaml)
+    config_file = pathlib.Path("config.yaml")
     with open(config_file, "r") as f:
         config = yaml.load(f, Loader=SafeLoader)
 
