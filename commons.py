@@ -29,6 +29,8 @@ from queue import Queue
 
 from yaml import SafeLoader
 
+from aa_urlscan import args
+
 script_path = os.path.dirname(os.path.realpath(__file__)) + "/_tp_modules"
 sys.path.insert(0, script_path)
 # from Levenshtein import distance
@@ -48,6 +50,8 @@ from confusables import unconfuse
 tqdm.tqdm.monitor_interval = 0
 uagent = "Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko"
 
+root_path = pathlib.Path(__file__).parent
+res_path = root_path.joinpath("result.txt")
 
 class DomainQueueManager():
     """
@@ -143,7 +147,6 @@ class UrlQueueManager():
 
     def check_site(self):
         """ """
-
         while True:
             url = self.url_queue.get()
             day = date.today()
@@ -178,13 +181,13 @@ class UrlQueueManager():
 
             # Open Directory
             if "index of /" in resp.text.lower():
-                with open("result.txt", "a") as file_to_output:
+                with open(res_path, "a") as file_to_output:
                     file_to_output.write(f"open_directory!!!_!!!{url}\n")
                 message_download("('Index of /' found)", url)
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
             # Banking phish
             elif ">interac e-transfer<" in resp.text.lower() and ">select your financial institution<" in resp.content.lower():
-                with open("result.txt", "a") as file_to_output:
+                with open(res_path, "a") as file_to_output:
                     file_to_output.write(f"bank_fish!!!_!!!{url}\n")
                 message_download("(Banking phish found)", url)
                 self.ext_csv = self.ext_csv + "html,php"
@@ -192,7 +195,7 @@ class UrlQueueManager():
                 self.ext_csv = self.ext_csv[-8]
             # Deliberate obfuscation - suspicious
             elif "<script>document.write(unescape('" in resp.text.lower():
-                with open("result.txt", "a") as file_to_output:
+                with open(res_path, "a") as file_to_output:
                     file_to_output.write(f"obfuscated_javascript!!!_!!!{url}\n")
                 message_download("(Obfuscated Javascript found)", url)
                 self.ext_csv = self.ext_csv + "html,php"
@@ -200,13 +203,13 @@ class UrlQueueManager():
                 self.ext_csv = self.ext_csv[-8]
             # Hosted file
             elif "Content-Disposition" in resp.headers and not resp.headers["Content-Type"].startswith("text"):
-                with open("result.txt", "a") as file_to_output:
+                with open(res_path, "a") as file_to_output:
                     file_to_output.write(f"attachment_found!!!_!!!{url}\n")
                 message_download("(Attachment found)", url)
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
             # String seen in downloaded file during urlscan.io scan
             elif "query_string" in self.args and self.args.query_string in url:
-                with open("result.txt", "a") as file_to_output:
+                with open(res_path, "a") as file_to_output:
                     file_to_output.write(f"query_string!!!_!!!{url}\n")
                 message_download("(Query String found)", url)
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
@@ -215,7 +218,7 @@ class UrlQueueManager():
                 for ext in self.extensions:
                     if not (url.endswith(".{}".format(ext)) or ".{}/".format(ext) in url or ".{}?".format(ext) in url):
                         continue
-                    with open("result.txt", "a") as file_to_output:
+                    with open(res_path, "a") as file_to_output:
                         file_to_output.write(f"extension_found!!!_!!!{ext}!!!_!!!{url}\n")
                     message_download("(Extension found)", url)
 

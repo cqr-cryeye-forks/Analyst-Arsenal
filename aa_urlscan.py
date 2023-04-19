@@ -93,6 +93,7 @@ parser.add_argument("--very-verbose",
                     action="store_true",
                     required=False,
                     help="Show error messages")
+parser.add_argument("--output")
 # Fix directory names
 args = commons.fix_directory(parser.parse_args())
 
