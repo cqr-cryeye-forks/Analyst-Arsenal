@@ -29,8 +29,6 @@ from queue import Queue
 
 from yaml import SafeLoader
 
-from aa_urlscan import args
-
 script_path = os.path.dirname(os.path.realpath(__file__)) + "/_tp_modules"
 sys.path.insert(0, script_path)
 # from Levenshtein import distance
