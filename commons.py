@@ -30,7 +30,7 @@ from yaml import SafeLoader
 
 script_path = os.path.dirname(os.path.realpath(__file__)) + "/_tp_modules"
 sys.path.insert(0, script_path)
-from Levenshtein import distance
+# from Levenshtein import distance
 import entropy
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -576,10 +576,10 @@ def score_domain(config, domain, args):
         if word in domain:
             score += config["keywords"][word]
 
-    for key in [k for (k, s) in config["keywords"].items() if s >= 70]:
-        for word in [w for w in words_in_domain if w not in ["email", "mail", "cloud"]]:
-            if distance(str(word), str(key)) == 1:
-                score += 70
+    # for key in [k for (k, s) in config["keywords"].items() if s >= 70]:
+    #     for word in [w for w in words_in_domain if w not in ["email", "mail", "cloud"]]:
+    #         if distance(str(word), str(key)) == 1:
+    #             score += 70
 
     if "xn--" not in domain and domain.count("-") >= 4:
         score += domain.count("-") * 3
