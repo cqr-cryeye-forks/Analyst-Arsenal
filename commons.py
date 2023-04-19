@@ -16,6 +16,7 @@ Resources:
 
 import base64
 import os
+import pathlib
 import re
 import sys
 import threading
@@ -480,8 +481,8 @@ def query_urlscan(args):
 def read_config(args):
     """ """
     global config
-
-    with open("config.yaml", "r") as f:
+    config_file = pathlib.Path(config.yaml)
+    with open(config_file, "r") as f:
         config = yaml.load(f, Loader=SafeLoader)
 
     for key in config.keys():
