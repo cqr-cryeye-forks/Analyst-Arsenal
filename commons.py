@@ -14,20 +14,19 @@ Resources:
     https://whoisds.com/newly-registered-domains
 """
 
-from datetime import date
-from datetime import datetime
-from datetime import timedelta
 import base64
-import glob
-import json
 import os
-import Queue
 import re
-import subprocess
 import sys
 import threading
 import time
 import zipfile
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
+from queue import Queue
+
+from yaml import SafeLoader
 
 script_path = os.path.dirname(os.path.realpath(__file__)) + "/_tp_modules"
 sys.path.insert(0, script_path)
@@ -35,8 +34,9 @@ from Levenshtein import distance
 import entropy
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-from termcolor import colored, cprint
+from termcolor import colored
 from tld import get_tld
 import subprocess
 import tqdm
@@ -44,9 +44,9 @@ import yaml
 
 from confusables import unconfuse
 
-
 tqdm.tqdm.monitor_interval = 0
 uagent = "Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko"
+
 
 class DomainQueueManager():
     """
@@ -56,9 +56,9 @@ class DomainQueueManager():
 
     def __init__(self, args, domain_queue, url_queue):
         """ """
-        self.args         = args
+        self.args = args
         self.domain_queue = domain_queue
-        self.url_queue    = url_queue
+        self.url_queue = url_queue
 
         thread_master(self.args.threads, self.return_suspicious)
 
@@ -75,13 +75,13 @@ class DomainQueueManager():
                 if exclusion.search(domain):
                     match_found = True
                     break
-            
+
             if match_found:
                 self.domain_queue.task_done()
                 continue
 
             score = score_domain(config, domain.lower(), self.args)
-            
+
             if score < self.args.score:
                 if self.args.log_nc:
                     with open(self.args.log_nc, "a") as log_nc:
@@ -92,20 +92,20 @@ class DomainQueueManager():
             if self.args.verbose:
                 if score >= 120:
                     tqdm.tqdm.write("{}: {} (score={})".format(
-                        message_header("critical"), 
-                        colored(domain, "red", attrs=["underline", "bold"]), 
+                        message_header("critical"),
+                        colored(domain, "red", attrs=["underline", "bold"]),
                         score)
                     )
                 elif score >= 90:
                     tqdm.tqdm.write("{}: {} (score={})".format(
-                        message_header("suspicious"), 
-                        colored(domain, "yellow", attrs=["underline"]), 
+                        message_header("suspicious"),
+                        colored(domain, "yellow", attrs=["underline"]),
                         score)
                     )
                 elif score >= self.args.score:
                     tqdm.tqdm.write("{}: {} (score={})".format(
-                        message_header("triggered"), 
-                        colored(domain, "cyan", attrs=["underline"]), 
+                        message_header("triggered"),
+                        colored(domain, "cyan", attrs=["underline"]),
                         score)
                     )
 
@@ -119,6 +119,7 @@ class DomainQueueManager():
             self.domain_queue.task_done()
         return
 
+
 class UrlQueueManager():
     """
     The run() method will be started and it will run in the background
@@ -131,17 +132,17 @@ class UrlQueueManager():
         # globals exclusions
         # globals proxies
         # globals torsocks
-        self.args       = args
-        self.url_queue  = url_queue
+        self.args = args
+        self.url_queue = url_queue
         self.extensions = config["extensions"]
-        self.ext_csv    = ",".join(self.extensions)
+        self.ext_csv = ",".join(self.extensions)
 
         print(colored("Creating {} threads...\n".format(self.args.threads), "yellow", attrs=["bold"]))
-
         thread_master(self.args.threads, self.check_site)
 
     def check_site(self):
         """ """
+
         while True:
             url = self.url_queue.get()
             day = date.today()
@@ -160,8 +161,8 @@ class UrlQueueManager():
 
             # Split URL into parts
             split_url = url.split("/")
-            protocol  = split_url[0]
-            domain    = split_url[2].split(":")[0]
+            protocol = split_url[0]
+            domain = split_url[2].split(":")[0]
 
             try:
                 resp = send_request(url, proxies, uagent, self.args)
@@ -175,27 +176,37 @@ class UrlQueueManager():
                 continue
 
             # Open Directory
-            if "index of /" in resp.content.lower():
+            if "index of /" in resp.text.lower():
+                with open("result.txt", "a") as file_to_output:
+                    file_to_output.write(f"open_directory!!!_!!!{url}\n")
                 message_download("('Index of /' found)", url)
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
             # Banking phish
-            elif ">interac e-transfer<" in resp.content.lower() and ">select your financial institution<" in resp.content.lower():
+            elif ">interac e-transfer<" in resp.text.lower() and ">select your financial institution<" in resp.content.lower():
+                with open("result.txt", "a") as file_to_output:
+                    file_to_output.write(f"bank_fish!!!_!!!{url}\n")
                 message_download("(Banking phish found)", url)
                 self.ext_csv = self.ext_csv + "html,php"
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
                 self.ext_csv = self.ext_csv[-8]
             # Deliberate obfuscation - suspicious
-            elif "<script>document.write(unescape('" in resp.content.lower():
+            elif "<script>document.write(unescape('" in resp.text.lower():
+                with open("result.txt", "a") as file_to_output:
+                    file_to_output.write(f"obfuscated_javascript!!!_!!!{url}\n")
                 message_download("(Obfuscated Javascript found)", url)
                 self.ext_csv = self.ext_csv + "html,php"
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
                 self.ext_csv = self.ext_csv[-8]
             # Hosted file
             elif "Content-Disposition" in resp.headers and not resp.headers["Content-Type"].startswith("text"):
+                with open("result.txt", "a") as file_to_output:
+                    file_to_output.write(f"attachment_found!!!_!!!{url}\n")
                 message_download("(Attachment found)", url)
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
             # String seen in downloaded file during urlscan.io scan
             elif "query_string" in self.args and self.args.query_string in url:
+                with open("result.txt", "a") as file_to_output:
+                    file_to_output.write(f"query_string!!!_!!!{url}\n")
                 message_download("(Query String found)", url)
                 download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
             # Catch-all - search for extensions in URL
@@ -203,7 +214,8 @@ class UrlQueueManager():
                 for ext in self.extensions:
                     if not (url.endswith(".{}".format(ext)) or ".{}/".format(ext) in url or ".{}?".format(ext) in url):
                         continue
-
+                    with open("result.txt", "a") as file_to_output:
+                        file_to_output.write(f"extension_found!!!_!!!{ext}!!!_!!!{url}\n")
                     message_download("(Extension found)", url)
 
                     action = download_site(self.args, day, protocol, domain, self.ext_csv, url, resp)
@@ -212,7 +224,9 @@ class UrlQueueManager():
                     elif action == "continue":
                         continue
             self.url_queue.task_done()
+
         return
+
 
 def check_path(args):
     """ """
@@ -221,16 +235,18 @@ def check_path(args):
         exit()
     return
 
+
 def create_queue(queue_name):
     """ """
     print(colored("Starting the {}...\n".format(queue_name), "yellow", attrs=["bold"]))
-    return Queue.Queue()
+    return Queue()
+
 
 def download_site(args, day, protocol, domain, ext_csv, url, resp):
     """ """
-    directory  = "{}{}".format(args.cap_dir, day)
+    directory = "{}{}".format(args.cap_dir, day)
     domain_dir = "{}/{}".format(directory, domain)
-    root_url   = "{}//{}/".format(protocol, domain)
+    root_url = "{}//{}/".format(protocol, domain)
 
     try:
         if not os.path.exists(domain_dir):
@@ -238,20 +254,20 @@ def download_site(args, day, protocol, domain, ext_csv, url, resp):
 
         if not os.path.exists(domain_dir):
             tqdm.tqdm.write(colored("{}: {} is temporarily unavailable.".format(
-                message_header("directory"), 
+                message_header("directory"),
                 domain_dir
             ), "red", attrs=["underline"]))
             tqdm.tqdm.write(colored("{}: Waiting 15s for {} to become available...".format(
-                message_header("directory"), 
+                message_header("directory"),
                 domain_dir), "red", attrs=["underline"]
             ))
             time.sleep(15)
-        
+
         if not os.path.exists(domain_dir):
             return "continue"
 
         wget_command = format_wget(args, directory, uagent, ext_csv, root_url)
-        proc     = subprocess.Popen(wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+        proc = subprocess.Popen(wget_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
         _, err = proc.communicate()
 
         if "301 Moved Permanently" in err or "302 Found" in err or "307 Temporary Redirect" in err:
@@ -267,11 +283,13 @@ def download_site(args, day, protocol, domain, ext_csv, url, resp):
         remove_empty(domain_dir, args)
         return "continue"
 
+
 def fix_directory(args):
     """ """
     if not args.cap_dir.endswith("/"):
         args.cap_dir = "{}/".format(args.cap_dir)
     return args
+
 
 def format_wget(args, directory, uagent, ext_csv, url):
     """Return the wget command needed to download files."""
@@ -305,6 +323,7 @@ def format_wget(args, directory, uagent, ext_csv, url):
 
     wget_command.append(url)
     return wget_command
+
 
 def get_domains(args):
     """ """
@@ -357,22 +376,25 @@ def get_domains(args):
     os.remove(txt_name)
     return domains
 
+
 def message_complete(url):
     """ """
     tqdm.tqdm.write("{}: {}".format(
-        message_header("complete"), 
+        message_header("complete"),
         colored(url, "green", attrs=["bold", "underline"])
     ))
     return
 
+
 def message_download(comment, url):
     """ """
     tqdm.tqdm.write("{}: {} {}".format(
-        message_header("download"), 
+        message_header("download"),
         colored(url, "green", attrs=["bold"]),
         comment
     ))
     return
+
 
 def message_external(key, filename):
     """ """
@@ -380,12 +402,13 @@ def message_external(key, filename):
         "No {} found in {}.yaml ({}:).".format(key, filename, key), "red", attrs=["bold"]
     ))
     exit()
-    
+
+
 def message_failed(args, err, message):
     """ """
     if args.very_verbose:
         tqdm.tqdm.write("{}: {}".format(
-            message_header("error"), 
+            message_header("error"),
             colored(err, "red", attrs=["bold", "underline"])
         ))
 
@@ -393,40 +416,42 @@ def message_failed(args, err, message):
         message = "Use --very-verbose to capture the error message."
 
     tqdm.tqdm.write("{}: {}".format(
-        message_header("failed"), 
+        message_header("failed"),
         colored(message, "red", attrs=["underline"])
     ))
     return
 
+
 def message_header(message_type):
     """ """
     headers = {
-        "complete"  : "[+] Complete  ",
-        "critical"  : "[!] Critical  ",
-        "crtsh"     : "[^] Crt.sh    ",
-        "directory" : "[/] Directory ",
-        "download"  : "[~] Download  ",
-        "empty"     : "[X] Empty     ",
-        "error"     : "[!] Error     ",
-        "failed"    : "[!] Failed    ",
-        "session"   : "[?] Session   ",
+        "complete": "[+] Complete  ",
+        "critical": "[!] Critical  ",
+        "crtsh": "[^] Crt.sh    ",
+        "directory": "[/] Directory ",
+        "download": "[~] Download  ",
+        "empty": "[X] Empty     ",
+        "error": "[!] Error     ",
+        "failed": "[!] Failed    ",
+        "session": "[?] Session   ",
         "suspicious": "[!] Suspicious",
-        "triggered" : "[!] Triggered "
+        "triggered": "[!] Triggered "
     }
     return headers[message_type]
+
 
 def query_urlscan(args):
     """Request URLs from urlscan.io"""
     # Get stopping point
-    now      = datetime.now()
+    now = datetime.now()
     timespan = datetime.strftime(now - timedelta(args.delta), "%a, %d %b %Y 05:00:00")
     timespan = datetime.strptime(timespan, "%a, %d %b %Y %H:%M:%S")
 
     try:
         print(colored("Querying urlscan.io for URLs...\n", "yellow", attrs=["bold"]))
-        urlscan  = "https://urlscan.io/api/v1/search/?q={}%20AND%20filename%3A{}&size=10000"
+        urlscan = "https://urlscan.io/api/v1/search/?q={}%20AND%20filename%3A{}&size=10000"
         endpoint = urlscan.format(config["queries"][args.query_type], args.query_string)
-        resp     = send_request(endpoint, proxies, uagent, args)
+        resp = send_request(endpoint, proxies, uagent, args)
     except Exception as err:
         message_failed(args, err, None)
         exit()
@@ -439,7 +464,7 @@ def query_urlscan(args):
         exit()
 
     results = resp.json()["results"]
-    urls    = []
+    urls = []
 
     for result in results:
         analysis_time = datetime.strptime(result["task"]["time"], "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -451,12 +476,13 @@ def query_urlscan(args):
         urls.append(result["page"]["url"])
     return urls
 
+
 def read_config(args):
     """ """
     global config
-            
+
     with open("config.yaml", "r") as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=SafeLoader)
 
     for key in config.keys():
         if key == "exclusions" and config[key] is None:
@@ -470,13 +496,15 @@ def read_config(args):
         config["keywords"].update(dns_twisted["keywords"])
     return config
 
+
 def read_file(input_file):
     """ """
     print(colored("Reading file containing URLs...\n", "yellow", attrs=["bold"]))
-    
+
     with open(input_file, "r") as open_file:
         contents = open_file.read().splitlines()
     return contents
+
 
 def recompile_exclusions():
     """ """
@@ -489,6 +517,7 @@ def recompile_exclusions():
             exclusions.append(re.compile(exclusion, re.IGNORECASE))
     return exclusions
 
+
 def remove_empty(domain_dir, args):
     """Remove empty files and directories"""
     try:
@@ -496,8 +525,8 @@ def remove_empty(domain_dir, args):
         subprocess.call(rm_files)
 
         chk_dirs = ["find", domain_dir, "-empty", "-type", "d"]
-        chkdirs  = subprocess.Popen(chk_dirs, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)        
-        out, _   = chkdirs.communicate()
+        chkdirs = subprocess.Popen(chk_dirs, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+        out, _ = chkdirs.communicate()
 
         if out == '':
             return False
@@ -517,6 +546,7 @@ def remove_empty(domain_dir, args):
         message_failed(args, err, domain_dir)
         return False
 
+
 def score_domain(config, domain, args):
     """ """
     score = 0
@@ -534,9 +564,9 @@ def score_domain(config, domain, args):
         message_failed(args, err, domain)
         pass
 
-    score += int(round(entropy.shannon_entropy(domain)*50))
+    score += int(round(entropy.shannon_entropy(domain) * 50))
 
-    domain          = unconfuse(domain)
+    domain = unconfuse(domain)
     words_in_domain = re.split(r"\W+", domain)
 
     if words_in_domain[0] in ["com", "net", "org"]:
@@ -546,7 +576,7 @@ def score_domain(config, domain, args):
         if word in domain:
             score += config["keywords"][word]
 
-    for key in [k for (k,s) in config["keywords"].items() if s >= 70]:
+    for key in [k for (k, s) in config["keywords"].items() if s >= 70]:
         for word in [w for w in words_in_domain if w not in ["email", "mail", "cloud"]]:
             if distance(str(word), str(key)) == 1:
                 score += 70
@@ -558,18 +588,19 @@ def score_domain(config, domain, args):
         score += domain.count(".") * 3
     return score
 
+
 def show_networking(args):
     """Select network to use, get IP address, and print message"""
     global proxies
     global torsocks
 
-    ip_type  = "Original"
-    proxies  = {}
+    ip_type = "Original"
+    proxies = {}
     torsocks = None
 
     if args.tor:
-        ip_type  = "Tor"
-        proxies  = {
+        ip_type = "Tor"
+        proxies = {
             "http": "socks5h://127.0.0.1:9050",
             "https": "socks5h://127.0.0.1:9050"
         }
@@ -578,8 +609,8 @@ def show_networking(args):
     print(colored("\nGetting IP Address...", "yellow", attrs=["bold"]))
     try:
         endpoint = "https://api.ipify.org"
-        resp     = send_request(endpoint, proxies, uagent, args)
-        ip_addr  = resp.content
+        resp = send_request(endpoint, proxies, uagent, args)
+        ip_addr = resp.content
     except Exception as err:
         message_failed(args, err, None)
         exit()
@@ -590,14 +621,16 @@ def show_networking(args):
     print(colored("{} IP: {}\n".format(ip_type, ip_addr), "yellow", attrs=["bold"]))
     return
 
+
 def send_request(endpoint, proxies, uagent, args):
     """ """
     return requests.get(endpoint,
                         proxies=proxies,
                         headers={"User-Agent": uagent},
-                        timeout=args.timeout,
+                        timeout=5,
                         allow_redirects=False,
                         verify=False)
+
 
 def show_summary(args):
     """Print summary of arguments selected"""
@@ -633,10 +666,14 @@ def show_summary(args):
         print("    verbose+       : {}".format(args.very_verbose))
     return
 
+
 def thread_master(threads, target):
     """ """
-    for thread in range(threads):
-        worker = threading.Thread(target=target)
-        worker.setDaemon(True)
+    for _ in range(threads):
+        worker = threading.Thread(
+            target=target,
+            daemon=True,
+        )
         worker.start()
+        worker.join(timeout=5)
     return
