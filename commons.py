@@ -50,6 +50,7 @@ uagent = "Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko"
 
 root_path = pathlib.Path(__file__).parent
 res_path = root_path.joinpath("result.txt")
+res_path.touch(exist_ok=True)
 
 class DomainQueueManager():
     """
